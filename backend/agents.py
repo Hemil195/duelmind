@@ -3,15 +3,65 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from dotenv import load_dotenv
 import os
 
+try:
+    from langchain_groq import ChatGroq  # pyright: ignore[reportMissingImports]
+except ImportError:
+    ChatGroq = None
+
 # Load the API key from .env file
 load_dotenv()
 
-# Initialize Gemini model
-# This is like turning on the AI brain
-llm = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash",
-    google_api_key=os.getenv("GOOGLE_API_KEY")
-)
+# Initialize models
+groq_api_key = os.getenv("GROQ_API_KEY")
+google_api_key = os.getenv("GOOGLE_API_KEY")
+
+groq_llm = None
+gemini_llm = None
+
+if groq_api_key and ChatGroq is not None:
+    groq_llm = ChatGroq(
+        model=os.getenv("GROQ_MODEL", "llama-3.1-8b-instant"),
+        api_key=groq_api_key
+    )
+
+if google_api_key:
+    gemini_llm = ChatGoogleGenerativeAI(
+        model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
+        google_api_key=google_api_key
+    )
+
+
+def invoke_with_fallback(messages):
+    """
+    Try Groq first. If Groq fails for any reason, fallback to Gemini.
+    """
+    groq_error = None
+
+    if groq_llm is not None:
+        try:
+            return groq_llm.invoke(messages)
+        except Exception as err:
+            groq_error = err
+            print(f"Groq request failed, falling back to Gemini: {err}")
+
+    if gemini_llm is not None:
+        try:
+            return gemini_llm.invoke(messages)
+        except Exception as err:
+            if groq_error is not None:
+                raise RuntimeError(
+                    f"Both model calls failed. Groq error: {groq_error}; Gemini error: {err}"
+                ) from err
+            raise RuntimeError(f"Gemini call failed: {err}") from err
+
+    if groq_error is not None:
+        raise RuntimeError(
+            f"Groq failed and Gemini is not configured. Groq error: {groq_error}"
+        )
+
+    raise RuntimeError(
+        "No model is configured. Set GROQ_API_KEY, or set GOOGLE_API_KEY as fallback."
+    )
 
 
 def proponent_agent(state: dict) -> dict:
@@ -25,8 +75,7 @@ def proponent_agent(state: dict) -> dict:
     # Build the conversation context from history
     history_text = "\n".join(history) if history else "This is the first round."
 
-    # Call Gemini
-    response = llm.invoke([
+    response = invoke_with_fallback([
         SystemMessage(content="""You are a confident debate champion. 
         Your job is to argue STRONGLY IN FAVOR of the given topic.
         Be logical, use facts, and keep your argument to 3-4 sentences.
@@ -59,7 +108,7 @@ def opponent_agent(state: dict) -> dict:
 
     history_text = "\n".join(history) if history else "This is the first round."
 
-    response = llm.invoke([
+    response = invoke_with_fallback([
         SystemMessage(content="""You are a sharp debate champion.
         Your job is to argue STRONGLY AGAINST the given topic.
         Counter the proponent's points directly.
@@ -94,7 +143,7 @@ def judge_agent(state: dict) -> dict:
 
     full_debate = "\n".join(history)
 
-    response = llm.invoke([
+    response = invoke_with_fallback([
         SystemMessage(content="""You are an impartial judge in a debate competition.
         Read the full debate carefully.
         Give a fair verdict on WHO argued better and WHY.
