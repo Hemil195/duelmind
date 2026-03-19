@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from graph import build_debate_graph
 
 # ── 1. Create FastAPI app ────────────────────────────────────────
@@ -27,6 +27,7 @@ debate_graph = build_debate_graph()
 # This defines what the frontend must send
 class DebateRequest(BaseModel):
     topic: str   # Example: "Should AI replace doctors?"
+    total_rounds: int = Field(default=3, ge=1, le=10)
 
 # ── 5. Response Model ────────────────────────────────────────────
 # This defines what we send back to frontend
@@ -65,6 +66,7 @@ def run_debate(request: DebateRequest):
         "topic": request.topic,
         "messages": [],
         "round": 1,
+        "max_rounds": request.total_rounds,
         "verdict": ""
     }
 
@@ -76,5 +78,5 @@ def run_debate(request: DebateRequest):
         topic=final_state["topic"],
         messages=final_state["messages"],
         verdict=final_state["verdict"],
-        total_rounds=3
+        total_rounds=request.total_rounds
     )

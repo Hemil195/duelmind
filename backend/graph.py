@@ -8,15 +8,16 @@ class DebateState(TypedDict):
     topic: str        # The debate topic
     messages: list    # Full debate history
     round: int        # Current round number
+    max_rounds: int   # Maximum number of rounds to run
     verdict: str      # Judge fills this at end
 
 # ── 2. Routing Function ──────────────────────────────────────────
 # This function decides: should we do another round OR go to judge?
 def should_continue(state: DebateState) -> str:
-    # We want 3 rounds total
+    # Continue until the configured max_rounds is reached
     # After opponent speaks, round gets incremented
-    # So if round > 3, debate is done → go to judge
-    if state["round"] > 3:
+    # So if round > max_rounds, debate is done → go to judge
+    if state["round"] > state["max_rounds"]:
         return "judge"
     else:
         return "proponent"
